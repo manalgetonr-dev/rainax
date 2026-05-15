@@ -22,7 +22,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 3. Install Flutter (stable)
+      # 3. Python 3.12 (must match Chaquopy version in build.gradle)
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 4. Install Flutter (stable)
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -30,25 +36,25 @@ jobs:
           channel: stable
           cache: true
 
-      # 4. Flutter deps
+      # 5. Flutter deps
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      # 5. Copy Python helper to Chaquopy source set
+      # 6. Copy Python helper to Chaquopy source set
       - name: Copy ytdlp_helper.py to Chaquopy source set
         run: |
           mkdir -p android/app/src/main/python
           cp assets/ytdlp_helper.py android/app/src/main/python/ytdlp_helper.py
 
-      # 6. Accept Android SDK licenses
+      # 7. Accept Android SDK licenses
       - name: Accept Android licenses
         run: yes | flutter doctor --android-licenses || true
 
-      # 7. Build debug APK (no signing needed)
+      # 8. Build debug APK (no signing needed)
       - name: Build debug APK
         run: flutter build apk --debug
 
-      # 8. Upload APK as a downloadable artifact
+      # 9. Upload APK as a downloadable artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:

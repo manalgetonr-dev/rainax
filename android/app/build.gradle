@@ -54,7 +54,7 @@ android {
 
 chaquopy {
     defaultConfig {
-        version "3.11"
+        version "3.12"
         pip {
             install "yt-dlp"
             install "mutagen"
