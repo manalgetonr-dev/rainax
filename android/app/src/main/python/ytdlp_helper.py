@@ -182,7 +182,8 @@ def run_download_kotlin(
     outtmpl = os.path.join(output_dir, "%(title)s.%(ext)s")
 
     # Only add ffmpeg post-processors if ffmpeg is actually available
-    ffmpeg_available = bool(yt_dlp.utils.find_exe("ffmpeg") or yt_dlp.utils.find_exe("ffmpeg"))
+    import shutil
+    ffmpeg_available = shutil.which("ffmpeg") is not None
     postprocessors = []
     if ffmpeg_available:
         if mp3:

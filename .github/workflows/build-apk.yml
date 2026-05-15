@@ -40,6 +40,15 @@ jobs:
           mkdir -p android/app/src/main/python
           cp assets/ytdlp_helper.py android/app/src/main/python/ytdlp_helper.py
 
+      - name: Download ffmpeg ARM64 binary into assets
+        run: |
+          mkdir -p assets
+          # Download static ffmpeg build for Android ARM64
+          curl -L "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-arm64" \
+            -o assets/ffmpeg
+          chmod +x assets/ffmpeg
+          ls -lh assets/ffmpeg
+
       - name: Accept Android licenses
         run: yes | flutter doctor --android-licenses || true
 
