@@ -3,7 +3,7 @@ name: Build RAINAX APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:       # lets you trigger manually from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-apk:
@@ -50,14 +50,20 @@ jobs:
       - name: Accept Android licenses
         run: yes | flutter doctor --android-licenses || true
 
-      # 8. Build debug APK (no signing needed)
+      # 8. Build debug APK via Gradle directly (bypasses Flutter path detection)
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
 
-      # 9. Upload APK as a downloadable artifact
+      # 9. Find and display APK location
+      - name: Locate APK
+        run: find . -name "*.apk" -type f
+
+      # 10. Upload APK as a downloadable artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: rainax-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
