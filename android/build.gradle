@@ -1,24 +1,73 @@
-buildscript {
-    ext.kotlin_version = "1.9.24"
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.5.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        // Chaquopy – embeds CPython so yt-dlp runs on Android
-        classpath "com.chaquo.python:gradle:15.0.1"
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'com.chaquo.python'
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
+def flutterRoot = localProperties.getProperty('flutter.sdk')
+
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+android {
+    namespace "com.rainax.downloader"
+    compileSdkVersion 34
+    ndkVersion "27.0.12077973"
+
+    defaultConfig {
+        applicationId "com.rainax.downloader"
+        minSdkVersion 24
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0.0"
+
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+
+        debug {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+chaquopy {
+    defaultConfig {
+        version "3.11"
+
+        pip {
+            install "yt-dlp"
+            install "mutagen"
+            install "certifi"
+        }
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation "androidx.multidex:multidex:2.0.1"
+
+    // FFmpegKit
+    implementation "com.arthenica:ffmpeg-kit-full:6.0-2"
 }
