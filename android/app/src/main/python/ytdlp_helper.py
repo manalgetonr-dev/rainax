@@ -13,18 +13,43 @@ from __future__ import annotations
 import json
 import os
 import sys
+import stat
 import traceback
 from typing import Any
 
 import yt_dlp
-import static_ffmpeg
 
-# ── Bootstrap ffmpeg binary so yt-dlp post-processors can find it ─────────────
-try:
-    static_ffmpeg.add_paths()  # adds ffmpeg/ffprobe to PATH at runtime
-except Exception as _e:
-    import sys
-    print(f"[RAINAX] static-ffmpeg init failed: {_e}", file=sys.stderr)
+# ── Bootstrap ffmpeg from app assets ─────────────────────────────────────────
+# The ffmpeg binary is copied from APK assets into the app's files dir by
+# Kotlin (RainaxApplication) before Python starts. We just need to ensure
+# it's on PATH so yt-dlp post-processors can find it.
+def _setup_ffmpeg() -> None:
+    possible = []
+    # Search sys.path for the app's private files directory
+    for p in sys.path:
+        if "com.rainax.downloader" in p:
+            base = p.split("com.rainax.downloader")[0] + "com.rainax.downloader"
+            possible.append(os.path.join(base, "files", "ffmpeg"))
+
+    # Also check common Android data paths
+    for env_var in ("ANDROID_DATA", "EXTERNAL_STORAGE"):
+        val = os.environ.get(env_var, "")
+        if val and "com.rainax.downloader" in val:
+            possible.append(os.path.join(val, "files", "ffmpeg"))
+
+    for ffmpeg_path in possible:
+        if os.path.isfile(ffmpeg_path):
+            os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
+            ffmpeg_dir = os.path.dirname(ffmpeg_path)
+            current_path = os.environ.get("PATH", "")
+            if ffmpeg_dir not in current_path:
+                os.environ["PATH"] = ffmpeg_dir + ":" + current_path
+            print(f"[RAINAX] ffmpeg found at {ffmpeg_path}", file=sys.stderr)
+            return
+
+    print("[RAINAX] ffmpeg binary not found — audio conversion will be skipped", file=sys.stderr)
+
+_setup_ffmpeg()
 
 # ── Module-level progress registry ───────────────────────────────────────────
 # Kotlin registers a callback here before calling run_download_kotlin.
@@ -156,17 +181,20 @@ def run_download_kotlin(
 
     outtmpl = os.path.join(output_dir, "%(title)s.%(ext)s")
 
+    # Only add ffmpeg post-processors if ffmpeg is actually available
+    ffmpeg_available = bool(yt_dlp.utils.find_exe("ffmpeg") or yt_dlp.utils.find_exe("ffmpeg"))
     postprocessors = []
-    if mp3:
-        postprocessors += [
-            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"},
-            {"key": "FFmpegMetadata"},
-        ]
-    elif audio_only:
-        postprocessors += [
-            {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"},
-            {"key": "FFmpegMetadata"},
-        ]
+    if ffmpeg_available:
+        if mp3:
+            postprocessors += [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"},
+                {"key": "FFmpegMetadata"},
+            ]
+        elif audio_only:
+            postprocessors += [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"},
+                {"key": "FFmpegMetadata"},
+            ]
 
     last_file = {"path": ""}
     cb = _progress_callbacks.get(task_id)
