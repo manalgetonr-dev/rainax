@@ -70,9 +70,7 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.google.code.gson:gson:2.11.0"
 
-    // FFmpegKit — community fork published to Maven Central (arthenica repo archived Jun 2025)
-    // Same com.arthenica.ffmpegkit.* package name, no extra repository needed
-    implementation "io.github.maitrungduc1410:ffmpeg-kit-full:6.0.1"
+    // FFmpegKit provided via ffmpeg_kit_flutter_full Flutter plugin (managed by pub.dev)
 }
 
 flutter {
