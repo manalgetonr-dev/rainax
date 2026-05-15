@@ -1,13 +1,46 @@
-plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    id "dev.flutter.flutter-gradle-plugin"
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'com.chaquo.python'
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
 }
+
+def flutterRoot = localProperties.getProperty('flutter.sdk')
+
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.rainax.downloader"
-    compileSdk flutter.compileSdkVersion
+    compileSdkVersion 34
     ndkVersion "27.0.12077973"
+
+    defaultConfig {
+        applicationId "com.rainax.downloader"
+        minSdkVersion 24
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0.0"
+
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+
+        debug {
+            minifyEnabled false
+        }
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -15,76 +48,25 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    defaultConfig {
-        applicationId "com.rainax.downloader"
-        minSdk 24
-        targetSdk flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-
-        // Required for chaquopy
-        ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            shrinkResources false
-            signingConfig signingConfigs.debug
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-        }
-        debug {
-            debuggable true
-        }
-    }
-
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging true
-        }
-        // Keep native libs required by yt-dlp/FFmpeg
-        pickFirst "lib/*/libpython*.so"
-        pickFirst "lib/*/libssl*.so"
-        pickFirst "lib/*/libcrypto*.so"
+        jvmTarget = '17'
     }
 }
-
-// Chaquopy – embeds CPython + yt-dlp into the APK
-apply plugin: "com.chaquo.python"
 
 chaquopy {
     defaultConfig {
         version "3.11"
+
         pip {
             install "yt-dlp"
-            install "mutagen"          // ID3 tags for MP3
-            install "certifi"          // SSL certs
+            install "mutagen"
+            install "certifi"
         }
     }
-    productFlavors {}
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    // WorkManager for background downloads
-    implementation "androidx.work:work-runtime-ktx:2.9.1"
-    // Notification support
-    implementation "androidx.core:core-ktx:1.13.1"
-    // FFmpegKit for audio/video merging
-    implementation "com.arthenica:ffmpeg-kit-full:6.0-2"
-    // Coroutines
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
-    // Gson for JSON
-    implementation "com.google.code.gson:gson:2.11.0"
-    // OkHttp for networking
-    implementation "com.squareup.okhttp3:okhttp:4.12.0"
-}
+    implementation "androidx.multidex:multidex:2.0.1"
 
-flutter {
-    source "../.."
+    implementation "com.arthenica:ffmpeg-kit-full:6.0-2"
 }
