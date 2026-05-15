@@ -1,0 +1,57 @@
+name: Build RAINAX APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:       # lets you trigger manually from GitHub UI
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Java 17 (required by Gradle + Chaquopy)
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # 3. Install Flutter (stable)
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      # 4. Flutter deps
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # 5. Copy Python helper to Chaquopy source set
+      - name: Copy ytdlp_helper.py to Chaquopy source set
+        run: |
+          mkdir -p android/app/src/main/python
+          cp assets/ytdlp_helper.py android/app/src/main/python/ytdlp_helper.py
+
+      # 6. Accept Android SDK licenses
+      - name: Accept Android licenses
+        run: yes | flutter doctor --android-licenses || true
+
+      # 7. Build debug APK (no signing needed)
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      # 8. Upload APK as a downloadable artifact
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rainax-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
