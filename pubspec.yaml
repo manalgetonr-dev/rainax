@@ -37,7 +37,6 @@ dependencies:
   url_launcher: ^6.3.0
   share_plus: ^9.0.0
   open_filex: ^4.4.1
-  ffmpeg_kit_flutter_full: ^6.0.3
 
 dev_dependencies:
   flutter_test:

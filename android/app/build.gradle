@@ -59,6 +59,7 @@ chaquopy {
             install "yt-dlp"
             install "mutagen"
             install "certifi"
+            install "ffmpeg-python"
         }
     }
 }
@@ -70,7 +71,7 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.google.code.gson:gson:2.11.0"
 
-    // FFmpegKit provided via ffmpeg_kit_flutter_full Flutter plugin (managed by pub.dev)
+    // FFmpeg handled by yt-dlp via ffmpeg-python (Chaquopy pip)
 }
 
 flutter {

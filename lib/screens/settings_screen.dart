@@ -58,12 +58,12 @@ class SettingsScreen extends StatelessWidget {
             _InfoTile(
               icon:  Icons.auto_awesome_rounded,
               title: 'RAINAX Downloader',
-              sub:   'v1.0.0  ·  Powered by yt-dlp + FFmpegKit',
+              sub:   'v1.0.0  ·  Powered by yt-dlp + ffmpeg-python',
             ),
             _InfoTile(
               icon:  Icons.code_rounded,
               title: 'Engine',
-              sub:   'yt-dlp (Chaquopy CPython) + FFmpegKit 6.0',
+              sub:   'yt-dlp (Chaquopy CPython) + ffmpeg-python',
             ),
           ]),
         ],
