@@ -63,13 +63,22 @@ chaquopy {
     }
 }
 
+repositories {
+    // FFmpegKit moved here after the original repo was archived
+    maven { url "https://jitpack.io" }
+    google()
+    mavenCentral()
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
     implementation "androidx.work:work-runtime-ktx:2.9.1"
     implementation "androidx.core:core-ktx:1.13.1"
-    implementation "com.arthenica:ffmpeg-kit-full:6.0-2"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.google.code.gson:gson:2.11.0"
+
+    // FFmpegKit — use the JitPack fork since arthenica's Maven repo is archived
+    implementation "com.github.arthenica:ffmpeg-kit:6.0.3"
 }
 
 flutter {
