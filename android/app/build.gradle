@@ -59,7 +59,7 @@ chaquopy {
             install "yt-dlp"
             install "mutagen"
             install "certifi"
-            install "ffmpeg-python"
+            install "static-ffmpeg"
         }
     }
 }

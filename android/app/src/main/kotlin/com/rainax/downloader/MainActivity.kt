@@ -44,12 +44,17 @@ class MainActivity : FlutterActivity() {
                             putExtra("playlist",  args["playlist"] as? Boolean ?: false)
                             putExtra("quality",   args["quality"] as? String ?: "best")
                         }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            android.util.Log.e("MainActivity", "startForegroundService failed: ${e.message}")
+                            result.error("SERVICE_ERROR", e.message, null)
                         }
-                        result.success(true)
                     }
 
                     "pauseDownload" -> {

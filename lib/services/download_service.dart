@@ -132,10 +132,25 @@ class DownloadService {
   Future<Map<String, dynamic>?> fetchInfo(String url) async {
     try {
       final result = await _ytdlpChannel.invokeMethod('fetchInfo', {'url': url});
-      return Map<String, dynamic>.from(result as Map);
+      if (result == null) return null;
+      return _deepCast(result as Map);
     } on PlatformException catch (e) {
       throw Exception(e.message ?? 'Failed to fetch video info');
+    } catch (e) {
+      throw Exception('Unexpected error: $e');
     }
+  }
+
+  /// Recursively converts Map<Object?,Object?> → Map<String,dynamic>
+  Map<String, dynamic> _deepCast(Map raw) {
+    return raw.map((k, v) {
+      final key = k?.toString() ?? '';
+      dynamic val;
+      if (v is Map)  val = _deepCast(v);
+      else if (v is List) val = v.map((e) => e is Map ? _deepCast(e) : e).toList();
+      else val = v;
+      return MapEntry(key, val);
+    });
   }
 
   Future<bool> checkYtDlp() async {
@@ -149,16 +164,24 @@ class DownloadService {
   // ── Internal helpers ──────────────────────────────────────────────
 
   Future<void> _invokeStart(DownloadTask task) async {
-    await _downloadChannel.invokeMethod('startDownload', {
-      'taskId':    task.id,
-      'url':       task.url,
-      'format':    task.format.ytdlpFormat,
-      'outputDir': task.outputDir,
-      'audioOnly': task.format.isAudioOnly,
-      'mp3':       task.format.isMp3,
-      'playlist':  task.isPlaylist,
-      'quality':   task.format.label,
-    });
+    try {
+      await _downloadChannel.invokeMethod('startDownload', {
+        'taskId':    task.id,
+        'url':       task.url,
+        'format':    task.format.ytdlpFormat,
+        'outputDir': task.outputDir,
+        'audioOnly': task.format.isAudioOnly,
+        'mp3':       task.format.isMp3,
+        'playlist':  task.isPlaylist,
+        'quality':   task.format.label,
+      });
+    } on PlatformException catch (e) {
+      task.setFailed(e.message ?? 'Failed to start download service');
+      _taskController.add(task);
+    } catch (e) {
+      task.setFailed(e.toString());
+      _taskController.add(task);
+    }
   }
 
   void _notifyTask(String taskId) {

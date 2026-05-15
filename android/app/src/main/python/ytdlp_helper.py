@@ -17,6 +17,14 @@ import traceback
 from typing import Any
 
 import yt_dlp
+import static_ffmpeg
+
+# ── Bootstrap ffmpeg binary so yt-dlp post-processors can find it ─────────────
+try:
+    static_ffmpeg.add_paths()  # adds ffmpeg/ffprobe to PATH at runtime
+except Exception as _e:
+    import sys
+    print(f"[RAINAX] static-ffmpeg init failed: {_e}", file=sys.stderr)
 
 # ── Module-level progress registry ───────────────────────────────────────────
 # Kotlin registers a callback here before calling run_download_kotlin.

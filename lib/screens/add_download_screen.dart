@@ -53,23 +53,43 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
   Future<void> _fetchInfo() async {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
+    // Basic URL validation before hitting the network
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setState(() {
+        _fetchErr = 'Please enter a valid URL starting with http:// or https://';
+        _fetching = false;
+      });
+      return;
+    }
     setState(() { _fetching = true; _fetchErr = null; _info = null; });
     try {
       final info = await context.read<DownloadProvider>().fetchInfo(url);
-      if (mounted) {
+      if (!mounted) return;
+      if (info == null) {
         setState(() {
-          _info      = info;
-          _fetching  = false;
-          _playlist  = info?['is_playlist'] == true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _fetchErr = e.toString().replaceFirst('Exception: ', '');
+          _fetchErr = 'Could not fetch video info. Check the URL and try again.';
           _fetching = false;
         });
+        return;
       }
+      if (info.containsKey('error')) {
+        setState(() {
+          _fetchErr = info['error']?.toString() ?? 'Unknown error';
+          _fetching = false;
+        });
+        return;
+      }
+      setState(() {
+        _info      = info;
+        _fetching  = false;
+        _playlist  = info['is_playlist'] == true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _fetchErr = e.toString().replaceFirst('Exception: ', '');
+        _fetching = false;
+      });
     }
   }
 
