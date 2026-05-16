@@ -8,6 +8,7 @@ import '../providers/download_provider.dart';
 import '../theme.dart';
 import '../widgets/format_chip.dart';
 import '../widgets/video_info_card.dart';
+import '../services/crash_log_service.dart';
 
 class AddDownloadSheet extends StatefulWidget {
   final String? prefillUrl;
@@ -67,12 +68,15 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
     // FIX: Capture provider reference BEFORE any await so context is
     // guaranteed to be valid even if the widget rebuilds mid-fetch.
     final prov = context.read<DownloadProvider>();
+    final log  = CrashLogService.instance;
+    log.info('FetchInfo', 'Fetching: $url');
 
     setState(() { _fetching = true; _fetchErr = null; _info = null; });
     try {
       final info = await prov.fetchInfo(url);
       if (!mounted) return;
       if (info == null) {
+        log.error('FetchInfo', 'fetchInfo returned null for url: $url');
         setState(() {
           _fetchErr = 'Could not fetch video info. Check the URL and try again.';
           _fetching = false;
@@ -80,21 +84,29 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
         return;
       }
       if (info.containsKey('error')) {
+        final errMsg   = info['error']?.toString() ?? 'Unknown error';
+        final tbMsg    = info['traceback']?.toString() ?? '';
+        final fullMsg  = tbMsg.isNotEmpty ? '$errMsg\n\n$tbMsg' : errMsg;
+        log.error('FetchInfo', 'yt-dlp error:\n$fullMsg');
         setState(() {
-          _fetchErr = info['error']?.toString() ?? 'Unknown error';
+          _fetchErr = errMsg; // show short msg in UI
           _fetching = false;
         });
         return;
       }
+      log.info('FetchInfo', 'Success: ${info['title'] ?? 'no title'} | playlist=${info['is_playlist']}');
       setState(() {
         _info      = info;
         _fetching  = false;
         _playlist  = info['is_playlist'] == true;
       });
-    } catch (e) {
+    } catch (e, stack) {
       if (!mounted) return;
+      final errStr = e.toString().replaceFirst('Exception: ', '');
+      CrashLogService.instance.fatal('FetchInfo',
+          'Exception: $errStr\n\nStack:\n$stack');
       setState(() {
-        _fetchErr = e.toString().replaceFirst('Exception: ', '');
+        _fetchErr = errStr;
         _fetching = false;
       });
     }

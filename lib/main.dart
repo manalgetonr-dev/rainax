@@ -8,6 +8,7 @@ import 'providers/download_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
+import 'services/crash_log_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,9 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  await CrashLogService.instance.init();
+  CrashLogService.instance.info('App', 'RAINAX starting up');
+
   runApp(const RainaxApp());
 }
 
@@ -36,6 +40,7 @@ class RainaxApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => DownloadProvider()..init()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider.value(value: CrashLogService.instance),
       ],
       child: Consumer<ThemeProvider>(
         builder: (_, themeProv, __) => MaterialApp(

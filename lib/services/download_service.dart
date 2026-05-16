@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/download_task.dart';
+import 'crash_log_service.dart';
 
 const _downloadChannel = MethodChannel('com.rainax.downloader/download');
 const _progressChannel = EventChannel('com.rainax.downloader/progress');
@@ -134,8 +135,13 @@ class DownloadService {
       if (result == null) return null;
       return _deepCast(result as Map);
     } on PlatformException catch (e) {
-      throw Exception(e.message ?? 'Failed to fetch video info');
-    } catch (e) {
+      final msg = e.message ?? 'Failed to fetch video info';
+      CrashLogService.instance.error('DownloadService/fetchInfo',
+          'PlatformException: ${e.code}\n$msg\nDetails: ${e.details}');
+      throw Exception(msg);
+    } catch (e, stack) {
+      CrashLogService.instance.fatal('DownloadService/fetchInfo',
+          'Unexpected: $e\n$stack');
       throw Exception('Unexpected error: $e');
     }
   }
@@ -174,9 +180,14 @@ class DownloadService {
         'quality':   task.format.label,
       });
     } on PlatformException catch (e) {
-      task.setFailed(e.message ?? 'Failed to start download service');
+      final msg = e.message ?? 'Failed to start download service';
+      CrashLogService.instance.error('DownloadService/invokeStart',
+          'PlatformException ${e.code}: $msg');
+      task.setFailed(msg);
       _taskController.add(task);
-    } catch (e) {
+    } catch (e, stack) {
+      CrashLogService.instance.fatal('DownloadService/invokeStart',
+          '$e\n$stack');
       task.setFailed(e.toString());
       _taskController.add(task);
     }

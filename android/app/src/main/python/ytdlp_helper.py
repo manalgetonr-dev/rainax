@@ -139,7 +139,9 @@ def fetch_info(url: str) -> str:
             "entries":     entries[:200],
         })
     except Exception as exc:
-        return _json({"error": str(exc)})
+        import traceback as _tb
+        full = _tb.format_exc()
+        return _json({"error": str(exc), "traceback": full[:1200]})
 
 
 def get_formats(url: str) -> str:

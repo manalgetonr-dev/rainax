@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/crash_log_service.dart';
+import 'debug_logs_screen.dart';
 import '../theme.dart';
 
 // FIX 21: ThemeProvider now persists the theme choice to SharedPreferences
@@ -81,6 +83,24 @@ class SettingsScreen extends StatelessWidget {
               sub:   'yt-dlp (Chaquopy CPython 3.12) + ffmpeg',
             ),
           ]),
+
+          _Section(title: 'Developer', children: [
+            _TapTile(
+              icon:  Icons.bug_report_rounded,
+              title: 'Debug Logs',
+              sub:   'View crash logs and yt-dlp errors',
+              color: kDanger,
+              onTap: (ctx) => Navigator.push(ctx,
+                  MaterialPageRoute(builder: (_) => const DebugLogsScreen())),
+            ),
+            _TapTile(
+              icon:  Icons.delete_sweep_rounded,
+              title: 'Clear Logs',
+              sub:   'Wipe all captured log entries',
+              color: kWarning,
+              onTap: (_) => CrashLogService.instance.clear(),
+            ),
+          ]),
         ],
       ),
     );
@@ -156,6 +176,36 @@ class _InfoTile extends StatelessWidget {
           style: TextStyle(
               fontSize: 11,
               color: isDark ? kDarkTextSec : kLightTextSec)),
+    );
+  }
+}
+
+class _TapTile extends StatelessWidget {
+  final IconData icon;
+  final String title, sub;
+  final Color color;
+  final void Function(BuildContext) onTap;
+  const _TapTile({
+    required this.icon,
+    required this.title,
+    required this.sub,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListTile(
+      leading: Icon(icon, color: color, size: 20),
+      title: Text(title, style: const TextStyle(fontSize: 14)),
+      subtitle: Text(sub,
+          style: TextStyle(
+              fontSize: 11,
+              color: isDark ? kDarkTextSec : kLightTextSec)),
+      trailing: Icon(Icons.chevron_right_rounded,
+          size: 18, color: isDark ? kDarkTextSec : kLightTextSec),
+      onTap: () => onTap(context),
     );
   }
 }
