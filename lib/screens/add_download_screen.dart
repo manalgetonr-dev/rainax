@@ -54,8 +54,6 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
 
-    // FIX 16: accept youtu.be short links and other http(s) URLs;
-    // also trim accidental whitespace that breaks URL parsing.
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       setState(() {
         _fetchErr = 'Please enter a valid URL starting with https://';
@@ -64,12 +62,15 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
       return;
     }
 
-    // FIX 17: prevent concurrent fetches — ignore tap if already fetching
     if (_fetching) return;
+
+    // FIX: Capture provider reference BEFORE any await so context is
+    // guaranteed to be valid even if the widget rebuilds mid-fetch.
+    final prov = context.read<DownloadProvider>();
 
     setState(() { _fetching = true; _fetchErr = null; _info = null; });
     try {
-      final info = await context.read<DownloadProvider>().fetchInfo(url);
+      final info = await prov.fetchInfo(url);
       if (!mounted) return;
       if (info == null) {
         setState(() {
@@ -103,18 +104,27 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
 
-    // FIX 18: close sheet BEFORE starting download so the user can't double-tap
+    // FIX: Read the provider BEFORE popping the sheet. Once Navigator.pop()
+    // is called the widget is removed from the tree and context becomes
+    // deactivated — any context.read<>() after that point throws:
+    // "Looking up a deactivated widget's ancestor is unsafe".
+    final prov = context.read<DownloadProvider>();
+    final title        = _info?['title'] as String? ?? url;
+    final thumbnail    = _info?['thumbnail'] as String?;
+    final isPlaylist   = _playlist;
+    final playlistCount = (_info?['entry_count'] as int?) ?? 1;
+    final format       = _format;
+
     if (mounted) Navigator.pop(context);
     HapticFeedback.mediumImpact();
 
-    final prov = context.read<DownloadProvider>();
     await prov.addDownload(
       url:           url,
-      title:         _info?['title'] as String? ?? url,
-      format:        _format,
-      thumbnail:     _info?['thumbnail'] as String?,
-      isPlaylist:    _playlist,
-      playlistCount: (_info?['entry_count'] as int?) ?? 1,
+      title:         title,
+      format:        format,
+      thumbnail:     thumbnail,
+      isPlaylist:    isPlaylist,
+      playlistCount: playlistCount,
     );
   }
 
@@ -180,7 +190,6 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
               _iconBtn(
                 icon:    Icons.search_rounded,
                 tooltip: 'Fetch info',
-                // FIX 17: disable button while already fetching
                 onTap:   _fetching ? () {} : _fetchInfo,
                 isDark:  isDark,
                 accent:  true,
