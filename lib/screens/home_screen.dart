@@ -1,5 +1,6 @@
 // lib/screens/home_screen.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/download_provider.dart';
@@ -17,6 +18,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  // FIX 15: keep subscription so it can be cancelled in dispose()
+  StreamSubscription<String>? _sharedUrlSub;
 
   final List<Widget> _screens = const [
     DownloadsScreen(),
@@ -28,10 +31,17 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DownloadProvider>().sharedUrlStream.listen((url) {
+      _sharedUrlSub = context.read<DownloadProvider>().sharedUrlStream.listen((url) {
         if (mounted) _openAddDownload(prefillUrl: url);
       });
     });
+  }
+
+  @override
+  void dispose() {
+    // FIX 15: cancel subscription to prevent setState after dispose
+    _sharedUrlSub?.cancel();
+    super.dispose();
   }
 
   void _openAddDownload({String? prefillUrl}) {
@@ -115,7 +125,7 @@ class _BottomNav extends StatelessWidget {
                   _navItem(context, 0, Icons.download_rounded, 'Downloads',
                       badge: prov.activeCount > 0 ? '${prov.activeCount}' : null),
                   _navItem(context, 1, Icons.history_rounded, 'History'),
-                  const SizedBox(width: 72), // FAB notch
+                  const SizedBox(width: 72),
                   _navItem(context, 2, Icons.settings_rounded, 'Settings'),
                 ],
               ),

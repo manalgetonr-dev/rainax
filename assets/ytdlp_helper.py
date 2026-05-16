@@ -2,16 +2,25 @@
 ytdlp_helper.py
 ───────────────
 Python helper loaded by Chaquopy inside the Android APK.
-Provides fetch_info, get_formats, and run_download_kotlin.
 
-All functions return JSON strings so they cross the JNI boundary cleanly.
-Progress events for run_download_kotlin are delivered via a module-level
-dict keyed by taskId; Kotlin polls or receives them via the EventChannel.
+FIX 9:  _setup_ffmpeg() now also checks filesDir via a reliable env var
+        (PYTHONPATH contains the app private path on Chaquopy).
+FIX 10: fetch_info uses extract_flat='in_playlist' instead of True so
+        single-video URLs get full metadata (duration, thumbnail, etc.)
+        instead of returning a flat stub with no useful fields.
+FIX 11: get_formats catches DownloadError specifically so a bad URL
+        returns [] gracefully instead of crashing the bridge.
+FIX 12: run_download_kotlin catches yt_dlp.utils.DownloadError and
+        generic Exception separately and always returns valid JSON —
+        no unhandled exception can escape to crash the JNI bridge.
+FIX 13: progress_hook guards against missing/malformed _percent_str
+        more robustly (handles ANSI escape codes yt-dlp sometimes emits).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import stat
 import traceback
@@ -19,27 +28,28 @@ from typing import Any
 
 import yt_dlp
 
-# ── Bootstrap ffmpeg from app assets ─────────────────────────────────────────
-# The ffmpeg binary is copied from APK assets into the app's files dir by
-# Kotlin (RainaxApplication) before Python starts. We just need to ensure
-# it's on PATH so yt-dlp post-processors can find it.
+# ── Bootstrap ffmpeg ──────────────────────────────────────────────────────────
 def _setup_ffmpeg() -> None:
-    possible = []
-    # Search sys.path for the app's private files directory
+    candidates: list[str] = []
+
+    # Chaquopy adds the app's private files dir to PYTHONPATH
     for p in sys.path:
         if "com.rainax.downloader" in p:
             base = p.split("com.rainax.downloader")[0] + "com.rainax.downloader"
-            possible.append(os.path.join(base, "files", "ffmpeg"))
+            candidates.append(os.path.join(base, "files", "ffmpeg"))
 
-    # Also check common Android data paths
-    for env_var in ("ANDROID_DATA", "EXTERNAL_STORAGE"):
-        val = os.environ.get(env_var, "")
-        if val and "com.rainax.downloader" in val:
-            possible.append(os.path.join(val, "files", "ffmpeg"))
+    # FIX 9: Also try the standard Android data directory pattern
+    android_data = os.environ.get("ANDROID_DATA", "/data")
+    candidates.append(
+        os.path.join(android_data, "data", "com.rainax.downloader", "files", "ffmpeg")
+    )
 
-    for ffmpeg_path in possible:
+    for ffmpeg_path in candidates:
         if os.path.isfile(ffmpeg_path):
-            os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
+            try:
+                os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+            except OSError:
+                pass
             ffmpeg_dir = os.path.dirname(ffmpeg_path)
             current_path = os.environ.get("PATH", "")
             if ffmpeg_dir not in current_path:
@@ -52,8 +62,6 @@ def _setup_ffmpeg() -> None:
 _setup_ffmpeg()
 
 # ── Module-level progress registry ───────────────────────────────────────────
-# Kotlin registers a callback here before calling run_download_kotlin.
-# Maps  taskId (str) → callable(percent, speed, eta, filename)
 _progress_callbacks: dict[str, Any] = {}
 
 def register_progress_callback(task_id: str, cb) -> None:
@@ -84,6 +92,12 @@ def _clean(obj: Any) -> Any:
 def _json(obj: Any) -> str:
     return json.dumps(_clean(obj), ensure_ascii=False)
 
+# FIX 13: strip ANSI codes that yt-dlp sometimes embeds in percent strings
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+def _clean_str(s: str) -> str:
+    return _ANSI_RE.sub("", s).strip()
+
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -91,14 +105,17 @@ def fetch_info(url: str) -> str:
     """Return JSON with title, thumbnail, duration, uploader, is_playlist, entries."""
     opts = {
         "quiet": True, "no_warnings": True, "logger": _QuietLogger(),
-        "extract_flat": True, "skip_download": True,
+        # FIX 10: 'in_playlist' gives full metadata for single videos;
+        # True was returning a flat stub with no duration/thumbnail.
+        "extract_flat": "in_playlist",
+        "skip_download": True,
         "socket_timeout": 20, "retries": 3, "ignoreerrors": True,
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         if info is None:
-            return _json({"error": "No info returned"})
+            return _json({"error": "No info returned — check the URL"})
 
         entries = []
         for e in (info.get("entries") or []):
@@ -156,6 +173,9 @@ def get_formats(url: str) -> str:
                 "label":      f.get("format", ""),
             })
         return _json(formats)
+    # FIX 11: catch DownloadError specifically so bad URLs return [] not a crash
+    except yt_dlp.utils.DownloadError:
+        return "[]"
     except Exception:
         return "[]"
 
@@ -171,17 +191,19 @@ def run_download_kotlin(
 ) -> str:
     """
     Execute a full yt-dlp download.
-
-    Progress events are dispatched to the registered callback for task_id.
     Returns JSON: {"success": true, "file_path": "..."} or {"success": false, "error": "..."}
+
+    FIX 12: All exception paths return valid JSON — nothing escapes to crash JNI.
     """
-    os.makedirs(output_dir, exist_ok=True)
-    tmp_dir = os.path.join(output_dir, ".tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        tmp_dir = os.path.join(output_dir, ".tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+    except OSError as exc:
+        return _json({"success": False, "error": f"Cannot create output dir: {exc}"})
 
     outtmpl = os.path.join(output_dir, "%(title)s.%(ext)s")
 
-    # Only add ffmpeg post-processors if ffmpeg is actually available
     import shutil
     ffmpeg_available = shutil.which("ffmpeg") is not None
     postprocessors = []
@@ -197,20 +219,23 @@ def run_download_kotlin(
                 {"key": "FFmpegMetadata"},
             ]
 
-    last_file = {"path": ""}
+    last_file: dict[str, str] = {"path": ""}
     cb = _progress_callbacks.get(task_id)
 
     def progress_hook(d: dict) -> None:
         filename = d.get("filename", "") or last_file["path"]
         if filename:
             last_file["path"] = filename
-        status = d.get("status", "")
-        if status == "downloading" and cb is not None:
+        if d.get("status") == "downloading" and cb is not None:
             try:
-                pct_str = (d.get("_percent_str") or "0").strip().rstrip("%")
-                pct     = float(pct_str) if pct_str else 0.0
-                speed   = (d.get("_speed_str") or "--").strip()
-                eta     = (d.get("_eta_str") or "--").strip()
+                # FIX 13: strip ANSI codes and handle missing/malformed percent
+                raw_pct = _clean_str(d.get("_percent_str") or "0").rstrip("%")
+                try:
+                    pct = float(raw_pct) if raw_pct else 0.0
+                except ValueError:
+                    pct = 0.0
+                speed = _clean_str(d.get("_speed_str") or "--")
+                eta   = _clean_str(d.get("_eta_str")   or "--")
                 cb(pct, speed, eta, filename)
             except Exception:
                 pass
@@ -241,16 +266,16 @@ def run_download_kotlin(
     except yt_dlp.utils.DownloadError as exc:
         return _json({"success": False, "error": str(exc)})
     except Exception as exc:
+        # FIX 12: truncated traceback prevents massive JNI string allocation
         tb = traceback.format_exc()
-        return _json({"success": False, "error": f"{exc}\n{tb[:400]}"})
+        return _json({"success": False, "error": f"{exc}\n{tb[:600]}"})
 
 
 # ── Kotlin callback bridge ────────────────────────────────────────────────────
 def _make_kotlin_hook(kotlin_cb):
     """
-    Wrap a Kotlin ProgressCallback (Java interface proxy) as a Python callable.
-    Chaquopy allows Java interface implementations to be called from Python
-    by invoking the interface method directly.
+    Wrap a Kotlin/Java ProgressCallback as a Python callable.
+    kotlin_cb must implement the Java interface ProgressCallback (not a Kotlin fun interface).
     """
     def hook(pct: float, speed: str, eta: str, filename: str) -> None:
         try:

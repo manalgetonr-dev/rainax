@@ -2,16 +2,31 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme.dart';
 
-// Simple theme notifier (can be extended to use SharedPreferences)
+// FIX 21: ThemeProvider now persists the theme choice to SharedPreferences
+// so dark/light mode survives app restarts.
 class ThemeProvider extends ChangeNotifier {
   ThemeMode _mode = ThemeMode.dark;
   ThemeMode get mode => _mode;
 
-  void toggle() {
+  ThemeProvider() {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool('rainax_dark_mode') ?? true;
+    _mode = isDark ? ThemeMode.dark : ThemeMode.light;
+    notifyListeners();
+  }
+
+  Future<void> toggle() async {
     _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('rainax_dark_mode', _mode == ThemeMode.dark);
   }
 }
 
@@ -34,9 +49,9 @@ class SettingsScreen extends StatelessWidget {
         children: [
           _Section(title: 'Appearance', children: [
             _SwitchTile(
-              icon:    Icons.dark_mode_rounded,
-              title:   'Dark Mode',
-              value:   thProv.mode == ThemeMode.dark,
+              icon:      Icons.dark_mode_rounded,
+              title:     'Dark Mode',
+              value:     thProv.mode == ThemeMode.dark,
               onChanged: (_) => thProv.toggle(),
             ),
           ]),
@@ -58,12 +73,12 @@ class SettingsScreen extends StatelessWidget {
             _InfoTile(
               icon:  Icons.auto_awesome_rounded,
               title: 'RAINAX Downloader',
-              sub:   'v1.0.0  ·  Powered by yt-dlp + ffmpeg-python',
+              sub:   'v1.0.0  ·  Powered by yt-dlp + ffmpeg',
             ),
             _InfoTile(
               icon:  Icons.code_rounded,
               title: 'Engine',
-              sub:   'yt-dlp (Chaquopy CPython) + ffmpeg-python',
+              sub:   'yt-dlp (Chaquopy CPython 3.12) + ffmpeg',
             ),
           ]),
         ],
@@ -86,7 +101,7 @@ class _Section extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 16, 0, 8),
           child: Text(title.toUpperCase(),
-              style: TextStyle(
+              style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,

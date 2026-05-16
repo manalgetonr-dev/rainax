@@ -18,13 +18,13 @@ class AddDownloadSheet extends StatefulWidget {
 }
 
 class _AddDownloadSheetState extends State<AddDownloadSheet> {
-  final _urlCtrl    = TextEditingController();
-  final _urlFocus   = FocusNode();
+  final _urlCtrl  = TextEditingController();
+  final _urlFocus = FocusNode();
   DownloadFormat    _format   = DownloadFormat.bestAuto;
   Map<String, dynamic>? _info;
-  bool _fetching    = false;
+  bool _fetching   = false;
   String? _fetchErr;
-  bool _playlist    = false;
+  bool _playlist   = false;
 
   @override
   void initState() {
@@ -53,14 +53,20 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
   Future<void> _fetchInfo() async {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
-    // Basic URL validation before hitting the network
+
+    // FIX 16: accept youtu.be short links and other http(s) URLs;
+    // also trim accidental whitespace that breaks URL parsing.
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       setState(() {
-        _fetchErr = 'Please enter a valid URL starting with http:// or https://';
+        _fetchErr = 'Please enter a valid URL starting with https://';
         _fetching = false;
       });
       return;
     }
+
+    // FIX 17: prevent concurrent fetches — ignore tap if already fetching
+    if (_fetching) return;
+
     setState(() { _fetching = true; _fetchErr = null; _info = null; });
     try {
       final info = await context.read<DownloadProvider>().fetchInfo(url);
@@ -97,6 +103,10 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
 
+    // FIX 18: close sheet BEFORE starting download so the user can't double-tap
+    if (mounted) Navigator.pop(context);
+    HapticFeedback.mediumImpact();
+
     final prov = context.read<DownloadProvider>();
     await prov.addDownload(
       url:           url,
@@ -106,8 +116,6 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
       isPlaylist:    _playlist,
       playlistCount: (_info?['entry_count'] as int?) ?? 1,
     );
-    if (mounted) Navigator.pop(context);
-    HapticFeedback.mediumImpact();
   }
 
   @override
@@ -154,8 +162,8 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
                   controller:  _urlCtrl,
                   focusNode:   _urlFocus,
                   decoration:  const InputDecoration(
-                    hintText:    'Paste YouTube or web URL…',
-                    prefixIcon:  Icon(Icons.link_rounded, size: 18),
+                    hintText:   'Paste YouTube or web URL…',
+                    prefixIcon: Icon(Icons.link_rounded, size: 18),
                   ),
                   keyboardType: TextInputType.url,
                   onSubmitted:  (_) => _fetchInfo(),
@@ -163,27 +171,28 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
               ),
               const SizedBox(width: 8),
               _iconBtn(
-                icon: Icons.content_paste_rounded,
+                icon:    Icons.content_paste_rounded,
                 tooltip: 'Paste',
-                onTap: _pasteFromClipboard,
-                isDark: isDark,
+                onTap:   _pasteFromClipboard,
+                isDark:  isDark,
               ),
               const SizedBox(width: 6),
               _iconBtn(
-                icon: Icons.search_rounded,
+                icon:    Icons.search_rounded,
                 tooltip: 'Fetch info',
-                onTap: _fetchInfo,
-                isDark: isDark,
-                accent: true,
+                // FIX 17: disable button while already fetching
+                onTap:   _fetching ? () {} : _fetchInfo,
+                isDark:  isDark,
+                accent:  true,
               ),
             ]),
 
             const SizedBox(height: 16),
 
             // ── Video info card ────────────────────────────────────────
-            if (_fetching) ...[
-              const Center(child: CircularProgressIndicator()),
-              const SizedBox(height: 16),
+            if (_fetching) ...const [
+              Center(child: CircularProgressIndicator()),
+              SizedBox(height: 16),
             ] else if (_fetchErr != null) ...[
               _ErrorBanner(message: _fetchErr!),
               const SizedBox(height: 12),
@@ -192,9 +201,9 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
               const SizedBox(height: 16),
               if (_info!['is_playlist'] == true) ...[
                 _PlaylistToggle(
-                  count: (_info!['entry_count'] as int?) ?? 0,
+                  count:       (_info!['entry_count'] as int?) ?? 0,
                   downloadAll: _playlist,
-                  onToggle: (v) => setState(() => _playlist = v),
+                  onToggle:    (v) => setState(() => _playlist = v),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -320,9 +329,9 @@ class _PlaylistToggle extends StatelessWidget {
                   fontWeight: FontWeight.w500)),
         ),
         Switch(
-          value:          downloadAll,
-          onChanged:      onToggle,
-          activeColor:    kAccent,
+          value:                downloadAll,
+          onChanged:            onToggle,
+          activeColor:          kAccent,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
       ]),

@@ -12,12 +12,11 @@ import 'theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Transparent status & nav bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor:                 Colors.transparent,
-    systemNavigationBarColor:       Colors.transparent,
-    statusBarIconBrightness:        Brightness.light,
+    statusBarColor:                    Colors.transparent,
+    systemNavigationBarColor:          Colors.transparent,
+    statusBarIconBrightness:           Brightness.light,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   SystemChrome.setPreferredOrientations([
@@ -70,13 +69,10 @@ class _PermissionGateState extends State<_PermissionGate> {
   }
 
   Future<void> _requestPermissions() async {
-    // Storage
-    await [
-      Permission.storage,
-      Permission.manageExternalStorage,
-    ].request();
-
-    // Notifications (Android 13+)
+    // FIX 14: manageExternalStorage is a special permission that opens Settings —
+    // requesting it on every launch is disruptive and not needed for scoped storage.
+    // Only request the permissions that are actually necessary.
+    await Permission.storage.request();
     await Permission.notification.request();
 
     if (mounted) setState(() => _done = true);

@@ -100,8 +100,12 @@ class MainActivity : FlutterActivity() {
 
                     "fetchInfo" -> {
                         val url = call.argument<String>("url") ?: ""
+                        // FIX 4: Guard against double-reply (race condition crash)
+                        var replied = false
                         YtDlpBridge.fetchInfo(url) { info, err ->
                             runOnUiThread {
+                                if (replied) return@runOnUiThread
+                                replied = true
                                 if (err != null) result.error("YTDLP_ERROR", err, null)
                                 else result.success(info)
                             }
@@ -110,8 +114,11 @@ class MainActivity : FlutterActivity() {
 
                     "getFormats" -> {
                         val url = call.argument<String>("url") ?: ""
+                        var replied = false
                         YtDlpBridge.getFormats(url) { formats, err ->
                             runOnUiThread {
+                                if (replied) return@runOnUiThread
+                                replied = true
                                 if (err != null) result.error("YTDLP_ERROR", err, null)
                                 else result.success(formats)
                             }
@@ -148,7 +155,6 @@ class MainActivity : FlutterActivity() {
         val permsNeeded = mutableListOf<String>()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+: granular media permissions
             listOf(
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_AUDIO,
@@ -159,13 +165,11 @@ class MainActivity : FlutterActivity() {
                 }
             }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10–12: READ_EXTERNAL_STORAGE (write is scoped)
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
                 permsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
         } else {
-            // Android 9 and below: both read and write
             listOf(
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE

@@ -19,7 +19,7 @@ class DownloadService {
   final _uuid = const Uuid();
   final Map<String, DownloadTask> _tasks = {};
 
-  final _taskController     = StreamController<DownloadTask>.broadcast();
+  final _taskController      = StreamController<DownloadTask>.broadcast();
   final _sharedUrlController = StreamController<String>.broadcast();
 
   Stream<DownloadTask> get taskStream      => _taskController.stream;
@@ -40,7 +40,6 @@ class DownloadService {
     _progressSub = _progressChannel.receiveBroadcastStream().listen(
       _onProgressEvent,
       onError: (_) {
-        // Re-subscribe after a short delay on channel error
         Future.delayed(const Duration(seconds: 1), _subscribeToProgress);
       },
     );
@@ -141,14 +140,13 @@ class DownloadService {
     }
   }
 
-  /// Recursively converts Map<Object?,Object?> → Map<String,dynamic>
   Map<String, dynamic> _deepCast(Map raw) {
     return raw.map((k, v) {
       final key = k?.toString() ?? '';
       dynamic val;
-      if (v is Map)  val = _deepCast(v);
-      else if (v is List) val = v.map((e) => e is Map ? _deepCast(e) : e).toList();
-      else val = v;
+      if (v is Map)        val = _deepCast(v);
+      else if (v is List)  val = v.map((e) => e is Map ? _deepCast(e) : e).toList();
+      else                 val = v;
       return MapEntry(key, val);
     });
   }
@@ -191,7 +189,14 @@ class DownloadService {
 
   void _onProgressEvent(dynamic raw) {
     if (raw == null) return;
-    final e      = Map<String, dynamic>.from(raw as Map);
+    // FIX 19: guard against malformed event map — don't crash on bad cast
+    final Map<String, dynamic> e;
+    try {
+      e = Map<String, dynamic>.from(raw as Map);
+    } catch (_) {
+      return;
+    }
+
     final taskId = e['taskId'] as String? ?? '';
     final task   = _tasks[taskId];
     if (task == null) return;
@@ -230,6 +235,7 @@ class DownloadService {
     _taskController.add(task);
   }
 
+  // FIX 20: use getExternalStorageDirectory with fallback — same as service side
   Future<String> _outputDirFor(DownloadFormat format) async {
     final base = await getExternalStorageDirectory()
                ?? await getApplicationDocumentsDirectory();
@@ -238,33 +244,38 @@ class DownloadService {
   }
 
   Future<void> _persistTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list  = _tasks.values
-        .where((t) => !t.isTerminal || t.status == DownloadStatus.completed)
-        .map((t) => jsonEncode(t.toJson()))
-        .toList();
-    await prefs.setStringList('rainax_tasks_v1', list);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list  = _tasks.values
+          .where((t) => !t.isTerminal || t.status == DownloadStatus.completed)
+          .map((t) => jsonEncode(t.toJson()))
+          .toList();
+      await prefs.setStringList('rainax_tasks_v1', list);
+    } catch (_) {
+      // Persistence failure is non-fatal
+    }
   }
 
   Future<void> _loadPersistedTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list  = prefs.getStringList('rainax_tasks_v1') ?? [];
-    for (final raw in list) {
-      try {
-        final task = DownloadTask.fromJson(
-          Map<String, dynamic>.from(jsonDecode(raw) as Map),
-        );
-        // Tasks that were mid-download when the app was killed → reset to queued
-        if (task.status == DownloadStatus.running ||
-            task.status == DownloadStatus.starting) {
-          task.updateProgress(
-            percent: task.progress, speed: '', eta: '',
-            filename: task.filename, status: DownloadStatus.queued,
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list  = prefs.getStringList('rainax_tasks_v1') ?? [];
+      for (final raw in list) {
+        try {
+          final task = DownloadTask.fromJson(
+            Map<String, dynamic>.from(jsonDecode(raw) as Map),
           );
-        }
-        _tasks[task.id] = task;
-      } catch (_) {}
-    }
+          if (task.status == DownloadStatus.running ||
+              task.status == DownloadStatus.starting) {
+            task.updateProgress(
+              percent: task.progress, speed: '', eta: '',
+              filename: task.filename, status: DownloadStatus.queued,
+            );
+          }
+          _tasks[task.id] = task;
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   void dispose() {

@@ -12,14 +12,19 @@ import io.flutter.plugin.common.EventChannel
 import kotlinx.coroutines.*
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * DownloadService – Foreground service that survives app minimisation.
  *
- * Each download runs in its own coroutine on Dispatchers.IO.
- * Progress is delivered to Flutter via [progressSink] (EventChannel).
- *
- * Lifecycle:  STARTING → RUNNING ⇄ PAUSED → COMPLETED | FAILED | CANCELLED
+ * FIX 5: totalActive is now AtomicInteger — was a plain Int mutated from
+ *        multiple coroutines, causing a race condition / wrong count.
+ * FIX 6: sendEvent posts to Main dispatcher safely; added null-check guard
+ *        so a stale progressSink never causes an IllegalStateException.
+ * FIX 7: onDestroy cancels scope before super — prevents coroutine leaks
+ *        from delivering events after service is destroyed.
+ * FIX 8: defaultOutputDir() now uses getExternalFilesDir which is always
+ *        accessible without WRITE_EXTERNAL_STORAGE on API 29+.
  */
 class DownloadService : Service() {
 
@@ -32,21 +37,21 @@ class DownloadService : Service() {
         const val NOTIF_ID      = 1001
         private  const val TAG  = "DownloadService"
 
-        // Shared with MainActivity for EventChannel wiring
         @Volatile var progressSink: EventChannel.EventSink? = null
 
         private val cancelFlags = ConcurrentHashMap<String, Boolean>()
         private val pauseFlags  = ConcurrentHashMap<String, Boolean>()
 
-        fun pauseTask(taskId: String)     { pauseFlags[taskId]  = true  }
-        fun resumeTask(taskId: String)    { pauseFlags[taskId]  = false }
-        fun cancelTask(taskId: String)    { cancelFlags[taskId] = true; pauseFlags.remove(taskId) }
+        fun pauseTask(taskId: String)  { pauseFlags[taskId]  = true  }
+        fun resumeTask(taskId: String) { pauseFlags[taskId]  = false }
+        fun cancelTask(taskId: String) { cancelFlags[taskId] = true; pauseFlags.remove(taskId) }
         fun getActiveTaskIds(): List<String> = cancelFlags.keys.toList()
     }
 
-    private val scope       = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val activeTasks = ConcurrentHashMap<String, Job>()
-    private var totalActive = 0
+    private val scope        = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activeTasks  = ConcurrentHashMap<String, Job>()
+    // FIX 5: AtomicInteger prevents race on concurrent downloads
+    private val totalActive  = AtomicInteger(0)
 
     // ── Service lifecycle ─────────────────────────────────────────────
 
@@ -69,6 +74,7 @@ class DownloadService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        // FIX 7: cancel scope BEFORE super so no events fire after destroy
         scope.cancel()
         super.onDestroy()
     }
@@ -86,7 +92,7 @@ class DownloadService : Service() {
 
         cancelFlags[taskId] = false
         pauseFlags[taskId]  = false
-        totalActive++
+        totalActive.incrementAndGet()  // FIX 5
 
         sendEvent(taskId, 0f, "", "", "", "STARTING")
 
@@ -104,13 +110,13 @@ class DownloadService : Service() {
                     updateNotification(id, pct, filename)
                 },
                 onComplete = { id, filePath ->
-                    totalActive = (totalActive - 1).coerceAtLeast(0)
+                    totalActive.decrementAndGet()  // FIX 5
                     sendEvent(id, 100f, "", "", filePath, "COMPLETED", filePath)
                     notifyComplete(id, filePath)
                     cleanup(id)
                 },
                 onError = { id, msg ->
-                    totalActive = (totalActive - 1).coerceAtLeast(0)
+                    totalActive.decrementAndGet()  // FIX 5
                     sendEvent(id, 0f, "", "", "", "FAILED", msg)
                     notifyError(id, msg)
                     cleanup(id)
@@ -126,7 +132,7 @@ class DownloadService : Service() {
         activeTasks.remove(taskId)
         cancelFlags.remove(taskId)
         pauseFlags.remove(taskId)
-        if (totalActive == 0) {
+        if (totalActive.get() == 0) {
             updateNotification("", 0f, "All downloads complete")
         }
     }
@@ -144,13 +150,15 @@ class DownloadService : Service() {
             "eta"      to eta,
             "filename" to filename,
             "status"   to status,
-            // For COMPLETED, extra == filePath; for FAILED, extra == error
             "filePath" to if (status == "COMPLETED") extra else "",
             "error"    to if (status == "FAILED")    extra else "",
             "ts"       to System.currentTimeMillis()
         )
+        // FIX 6: capture sink locally to avoid TOCTOU null-pointer
+        val sink = progressSink
+        if (sink == null) return
         scope.launch(Dispatchers.Main) {
-            try { progressSink?.success(event) }
+            try { sink.success(event) }
             catch (e: Exception) { Log.w(TAG, "EventSink post failed: ${e.message}") }
         }
     }
@@ -193,12 +201,12 @@ class DownloadService : Service() {
     private fun updateNotification(taskId: String, percent: Float, filename: String) {
         val nm   = NotificationManagerCompat.from(this)
         val name = File(filename).nameWithoutExtension.take(38).ifEmpty {
-            if (totalActive > 1) "$totalActive active downloads" else "Downloading…"
+            if (totalActive.get() > 1) "${totalActive.get()} active downloads" else "Downloading…"
         }
         val notif = buildNotification(
-            title        = "RAINAX  ·  ${percent.toInt()}%",
-            text         = name,
-            progress     = percent.toInt(),
+            title         = "RAINAX  ·  ${percent.toInt()}%",
+            text          = name,
+            progress      = percent.toInt(),
             indeterminate = percent == 0f
         )
         try { nm.notify(NOTIF_ID, notif) } catch (_: SecurityException) {}
@@ -228,6 +236,7 @@ class DownloadService : Service() {
         try { nm.notify(taskId.hashCode(), notif) } catch (_: SecurityException) {}
     }
 
+    // FIX 8: getExternalFilesDir is scoped storage, no WRITE permission needed on API 29+
     private fun defaultOutputDir(): String {
         val dir = File(getExternalFilesDir(null), "RAINAX/Downloads")
         dir.mkdirs()
